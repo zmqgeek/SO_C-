@@ -44,16 +44,13 @@
         }
         private static int[] getTopologicalSortOrder(List<Field> fields)
         {
-            TopologicalSorter g = new TopologicalSorter();
-            Dictionary<string, int> _indexes = new Dictionary<string, int>(); 
-           
+            TopologicalSorter g = new TopologicalSorter(fields.Count);
+            Dictionary<string, int> _indexes = new Dictionary<string, int>();
             //add vertices
-            for (int i = 0; i < fields.Count;i++)
+            for (int i = 0; i < fields.Count; i++)
             {
-                g.AddVertex((char)i);
-                _indexes[fields[i].Name.ToLower()] = i;
+                _indexes[fields[i].Name.ToLower()] = g.AddVertex(i);
             }
-            
             //add edges
             for (int i = 0; i < fields.Count; i++)
             {
@@ -61,17 +58,12 @@
                 {
                     for (int j = 0; j < fields[i].DependsOn.Length; j++)
                     {
-                        g.AddEdge(i, 
+                        g.AddEdge(i,
                             _indexes[fields[i].DependsOn[j].ToLower()]);
                     }
-                }                
+                }
             }
-            char[] array = g.Sort();
-            int[] result = new int[fields.Count];
-            for (int i = 0; i < fields.Count; i++)
-            {
-                result[i] = (int)array[i];
-            }
+            int[] result = g.Sort();
             return result;
             
         }
