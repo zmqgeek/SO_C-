@@ -1,166 +1,154 @@
-    static partial class FileExporter
-    {
-        private enum CellStyle { General, Number, Currency, DateTime, ShortDate };
-        private static void WriteExcelHeader(StreamWriter fs)
+        public class ExcelWriter : IDisposable
         {
-            fs.WriteLine("<?xml version=\"1.0\"?>");
-            fs.WriteLine("<?mso-application progid=\"Excel.Sheet\"?>");
-            fs.WriteLine("<ss:Workbook xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\">");
-        }
-        private static void WriteExcelStyles(StreamWriter fs)
-        {
-            fs.WriteLine("  <ss:Styles>");
-            fs.WriteLine("    <ss:Style ss:ID=\"{0}\" />", CellStyle.General);
-            fs.WriteLine("    <ss:Style ss:ID=\"{0}\"><ss:NumberFormat ss:Format=\"General Number\" /></ss:Style>", CellStyle.Number);
-            fs.WriteLine("    <ss:Style ss:ID=\"{0}\"><ss:NumberFormat ss:Format=\"General Date\" /></ss:Style>", CellStyle.DateTime);
-            fs.WriteLine("    <ss:Style ss:ID=\"{0}\"><ss:NumberFormat ss:Format=\"Currency\" /></ss:Style>", CellStyle.Currency);
-            fs.WriteLine("    <ss:Style ss:ID=\"{0}\"><ss:NumberFormat ss:Format=\"Short Date\" /></ss:Style>", CellStyle.ShortDate);
-            fs.WriteLine("  </ss:Styles>");
-        }
-        static public void OpenFile(String fileName)
-        {
-            try
+            private XmlWriter _writer;
+            public enum CellStyle { General, Number, Currency, DateTime, ShortDate };
+            public void WriteStartDocument()
             {
-                //try to open the file with its default association
-                Process p = new Process();
-                p.StartInfo.FileName = fileName;
-                p.Start();
+                if (_writer == null) throw new NotSupportedException("Cannot write after closing.");
+                
+                _writer.WriteProcessingInstruction("mso-application", "progid=\"Excel.Sheet\"");
+                _writer.WriteStartElement("ss", "Workbook", "urn:schemas-microsoft-com:office:spreadsheet");
+                 WriteExcelStyles();
+           }
+            public void WriteEndDocument()
+            {
+                if (_writer == null) throw new NotSupportedException("Cannot write after closing.");
+                _writer.WriteEndElement();
             }
-            catch
+            private void WriteExcelStyleElement(CellStyle style)
             {
-                MessageBox.Show("There was an error opening the file. It should, however, still be saved.", "Excel Export", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+                _writer.WriteStartElement("Style", "urn:schemas-microsoft-com:office:spreadsheet");
+                _writer.WriteAttributeString("ID", "urn:schemas-microsoft-com:office:spreadsheet", style.ToString());
+                _writer.WriteEndElement();
             }
-        }
-        public static void ExcelExport(DataGridView dataGrid, String fileName, bool openAfter)
-        {
-            //export a DataGridView to Excel
-            DialogResult retry = DialogResult.Retry;
-            while (retry == DialogResult.Retry)
+            private void WriteExcelStyleElement(CellStyle style, string NumberFormat)
             {
-                try
+                _writer.WriteStartElement("Style", "urn:schemas-microsoft-com:office:spreadsheet");
+                _writer.WriteAttributeString("ID", "urn:schemas-microsoft-com:office:spreadsheet", style.ToString());
+                _writer.WriteStartElement("NumberFormat", "urn:schemas-microsoft-com:office:spreadsheet");
+                _writer.WriteAttributeString("Format", "urn:schemas-microsoft-com:office:spreadsheet", NumberFormat);
+                _writer.WriteEndElement();
+                _writer.WriteEndElement();
+            }
+            private void WriteExcelStyles()
+            {
+                _writer.WriteStartElement("Styles", "urn:schemas-microsoft-com:office:spreadsheet");
+                WriteExcelStyleElement(CellStyle.General);
+                WriteExcelStyleElement(CellStyle.Number, "General Number");
+                WriteExcelStyleElement(CellStyle.DateTime, "General Date");
+                WriteExcelStyleElement(CellStyle.Currency, "Currency");
+                WriteExcelStyleElement(CellStyle.ShortDate, "Short Date");
+                _writer.WriteEndElement();
+            }
+            public void WriteStartWorksheet(string name)
+            {
+                if (_writer == null) throw new NotSupportedException("Cannot write after closing.");
+                _writer.WriteStartElement("Worksheet", "urn:schemas-microsoft-com:office:spreadsheet");
+                _writer.WriteAttributeString("Name", "urn:schemas-microsoft-com:office:spreadsheet", name);
+                _writer.WriteStartElement("Table", "urn:schemas-microsoft-com:office:spreadsheet");
+            }
+            public void WriteEndWorksheet()
+            {
+                if (_writer == null) throw new NotSupportedException("Cannot write after closing.");
+                _writer.WriteEndElement();
+                _writer.WriteEndElement();
+            }
+            public ExcelWriter(string outputFileName)
+            {
+                XmlWriterSettings settings = new XmlWriterSettings();
+                settings.Indent = true;
+                _writer = XmlWriter.Create(outputFileName, settings);
+            }
+            public void Close()
+            {
+                if (_writer == null) throw new NotSupportedException("Already closed.");
+                _writer.Close();
+                _writer = null;
+            }
+            public void WriteExcelColumnDefinition(int columnWidth)
+            {
+                if (_writer == null) throw new NotSupportedException("Cannot write after closing.");
+                _writer.WriteStartElement("Column", "urn:schemas-microsoft-com:office:spreadsheet");
+                _writer.WriteStartAttribute("Width", "urn:schemas-microsoft-com:office:spreadsheet");
+                _writer.WriteValue(columnWidth);
+                _writer.WriteEndAttribute();
+                _writer.WriteEndElement();
+            }
+            public void WriteExcelUnstyledCell(string value)
+            {
+                if (_writer == null) throw new NotSupportedException("Cannot write after closing.");
+                _writer.WriteStartElement("Cell", "urn:schemas-microsoft-com:office:spreadsheet");
+                _writer.WriteStartElement("Data", "urn:schemas-microsoft-com:office:spreadsheet");
+                _writer.WriteAttributeString("Type", "urn:schemas-microsoft-com:office:spreadsheet", "String");
+                _writer.WriteValue(value);
+                _writer.WriteEndElement();
+                _writer.WriteEndElement();
+            }
+            public void WriteStartRow()
+            {
+                if (_writer == null) throw new NotSupportedException("Cannot write after closing.");
+                _writer.WriteStartElement("Row", "urn:schemas-microsoft-com:office:spreadsheet");
+            }
+            public void WriteEndRow()
+            {
+                if (_writer == null) throw new NotSupportedException("Cannot write after closing.");
+                _writer.WriteEndElement();
+            }
+            public void WriteExcelStyledCell(object value, CellStyle style)
+            {
+                if (_writer == null) throw new NotSupportedException("Cannot write after closing.");
+                _writer.WriteStartElement("Cell", "urn:schemas-microsoft-com:office:spreadsheet");
+                _writer.WriteAttributeString("StyleID", "urn:schemas-microsoft-com:office:spreadsheet", style.ToString());
+                _writer.WriteStartElement("Data", "urn:schemas-microsoft-com:office:spreadsheet");
+                switch (style)
                 {
-                    using (StreamWriter fs = new StreamWriter(fileName))
-                    {
-                        WriteExcelHeader(fs);
-                        WriteExcelStyles(fs);
-                        // Write the worksheet contents
-                        fs.WriteLine("<ss:Worksheet ss:Name=\"Sheet1\">");
-                        fs.WriteLine("  <ss:Table>");
-                        //Write column definitions - width based on the data grid column width
-                        foreach (DataGridViewColumn col in dataGrid.Columns)
-                            if (col.Visible)
-                                fs.WriteLine("    <ss:Column ss:Width=\"{0}\"/>", col.Width);
-                        //Write header row
-                        fs.WriteLine("    <ss:Row>");
-                        foreach (DataGridViewColumn col in dataGrid.Columns)
-                            if (col.Visible)
-                                fs.WriteLine("      <ss:Cell><ss:Data ss:Type=\"String\">{0}</ss:Data></ss:Cell>", col.HeaderText);
-                        fs.WriteLine("    </ss:Row>");
-                        //write data
-                        foreach (DataGridViewRow row in dataGrid.Rows)
-                        {
-                            fs.WriteLine("    <ss:Row>");
-                            foreach (DataGridViewCell cell in row.Cells)
-                            {
-                                if (cell.Visible)
-                                    WriteExcelCellTag(fs, cell);
-                            }
-                            fs.WriteLine("    </ss:Row>");
-                        }
-                        // Close up the document
-                        fs.WriteLine("  </ss:Table>");
-                        fs.WriteLine("</ss:Worksheet>");
-                        fs.WriteLine("</ss:Workbook>");
-                        fs.Close();
-                        if (openAfter)
-                            OpenFile(fileName);
-                        retry = DialogResult.Cancel;
-                    }
+                    case CellStyle.General:
+                        _writer.WriteAttributeString("Type", "urn:schemas-microsoft-com:office:spreadsheet", "String");
+                        break;
+                    case CellStyle.Number:
+                    case CellStyle.Currency:
+                        _writer.WriteAttributeString("Type", "urn:schemas-microsoft-com:office:spreadsheet", "Number");
+                        break;
+                    case CellStyle.ShortDate:
+                    case CellStyle.DateTime:
+                        _writer.WriteAttributeString("Type", "urn:schemas-microsoft-com:office:spreadsheet", "DateTime");
+                        break;
                 }
-                catch (Exception myException)
+                _writer.WriteValue(value);
+                //  tag += String.Format("{1}\"><ss:Data ss:Type=\"DateTime\">{0:yyyy\\-MM\\-dd\\THH\\:mm\\:ss\\.fff}</ss:Data>", value,
+                _writer.WriteEndElement();
+                _writer.WriteEndElement();
+            }
+            public void WriteExcelAutoStyledCell(object value)
+            {
+                if (_writer == null) throw new NotSupportedException("Cannot write after closing.");
+                //write the <ss:Cell> and <ss:Data> tags for something
+                if (value is Int16 || value is Int32 || value is Int64 || value is SByte ||
+                    value is UInt16 || value is UInt32 || value is UInt64 || value is Byte)
                 {
-                    retry = MessageBox.Show(myException.Message, "Excel Export", MessageBoxButtons.RetryCancel, MessageBoxIcon.Asterisk);
+                    WriteExcelStyledCell(value, CellStyle.Number);
                 }
-            }
-        }
-        private static void WriteExcelCellTag(StreamWriter fs, DataGridViewCell cell)
-        {
-            //overloaded - write the <ss:Cell> and <ss:Data> tags for DataGridViewCell
-            WriteExcelCellTag(fs, cell.Value);
-        }
-        public static void ExcelExport(DataTable data, String fileName, bool openAfter)
-        {
-            //export a DataTable to Excel
-            DialogResult retry = DialogResult.Retry;
-            while (retry == DialogResult.Retry)
-            {
-                try
+                else if (value is Single || value is Double || value is Decimal) //we'll assume it's a currency
                 {
-                    using (StreamWriter fs = new StreamWriter(fileName))
-                    {
-                        WriteExcelHeader(fs);
-                        WriteExcelStyles(fs);
-                        // Write the worksheet contents
-                        fs.WriteLine("<ss:Worksheet ss:Name=\"Sheet1\">");
-                        fs.WriteLine("  <ss:Table>");
-                        //Write column definitions - no width definitions for a DataTable so nothing goes here
-                        /*foreach (DataColumn col in data.Columns)
-                            fs.WriteLine("    <ss:Column ss:Width=\"{0}\"/>", col.Width);*/
-                        //Write header row
-                        fs.WriteLine("    <ss:Row>");
-                        foreach (DataColumn col in data.Columns)
-                            fs.WriteLine("      <ss:Cell><ss:Data ss:Type=\"String\">{0}</ss:Data></ss:Cell>", col.Caption);
-                        fs.WriteLine("    </ss:Row>");
-                        //write data
-                        foreach (DataRow row in data.Rows)
-                        {
-                            fs.WriteLine("    <ss:Row>");
-                            foreach (Object o in row.ItemArray)
-                            {
-                                WriteExcelCellTag(fs, o);
-                            }
-                            fs.WriteLine("    </ss:Row>");
-                        }
-                        // Close up the document
-                        fs.WriteLine("  </ss:Table>");
-                        fs.WriteLine("</ss:Worksheet>");
-                        fs.WriteLine("</ss:Workbook>");
-                        fs.Close();
-                        if (openAfter)
-                            OpenFile(fileName);
-                        retry = DialogResult.OK;
-                    }
+                    WriteExcelStyledCell(value, CellStyle.Currency);
                 }
-                catch (Exception myException)
+                else if (value is DateTime)
                 {
-                    retry = MessageBox.Show(myException.Message, "Excel Export", MessageBoxButtons.RetryCancel, MessageBoxIcon.Asterisk);
+                    //check if there's no time information and use the appropriate style
+                    WriteExcelStyledCell(value, ((DateTime)value).TimeOfDay.CompareTo(new TimeSpan(0, 0, 0, 0, 0)) == 0 ? CellStyle.ShortDate : CellStyle.DateTime);
+                }
+                else
+                {
+                    WriteExcelStyledCell(value, CellStyle.General);
                 }
             }
+            #region IDisposable Members
+            public void Dispose()
+            {
+                if (_writer == null)
+                    return;
+                _writer.Close();
+                _writer = null;
+            }
+            #endregion
         }
-        private static void WriteExcelCellTag(StreamWriter fs, Object o)
-        {
-            //write the <ss:Cell> and <ss:Data> tags for something
-            String tag = "      <ss:Cell ss:StyleID=\"";
-            if (o is Int16 || o is Int32 || o is Int64 || o is SByte ||
-                o is UInt16 || o is UInt32 || o is UInt64 || o is Byte)
-            {
-                tag += String.Format("{1}\"><ss:Data ss:Type=\"Number\">{0}</ss:Data>", o, CellStyle.Number);
-            }
-            else if (o is Single || o is Double || o is Decimal) //we'll assume it's a currency
-            {
-                tag += String.Format("{1}\"><ss:Data ss:Type=\"Number\">{0}</ss:Data>", o, CellStyle.Currency);
-            }
-            else if (o is DateTime)
-            {
-                //check if there's no time information and use the appropriate style
-                tag += String.Format("{1}\"><ss:Data ss:Type=\"DateTime\">{0:yyyy\\-MM\\-dd\\THH\\:mm\\:ss\\.fff}</ss:Data>", o,
-                ((DateTime)o).TimeOfDay.CompareTo(new TimeSpan(0, 0, 0, 0, 0)) == 0 ? CellStyle.ShortDate : CellStyle.DateTime);
-            }
-            else
-            {
-                tag += String.Format("{1}\"><ss:Data ss:Type=\"String\">{0}</ss:Data>", o, CellStyle.General);
-            }
-            tag += "</ss:Cell>";
-            fs.WriteLine(tag);
-        }
-    }
