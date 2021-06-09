@@ -1,98 +1,87 @@
-    class TokenDefinition
+    public interface IMatcher
     {
-        public readonly Regex Regex;
+        /// <summary>
+        /// Return the number of characters that this "regex" or equivalent
+        /// matches.
+        /// </summary>
+        /// <param name="text">The text to be matched</param>
+        /// <returns>The number of characters that matched</returns>
+        int Match(string text);
+    }
+    sealed class RegexMatcher : IMatcher
+    {
+        private readonly Regex regex;
+        public RegexMatcher(string regex)
+        {
+            this.regex = new Regex(string.Format("^{0}", regex));
+        }
+        public int Match(string text)
+        {
+            var m = regex.Match(text);
+            return m.Success ? m.Length : 0;
+        }
+        public override string ToString()
+        {
+            return regex.ToString();
+        }
+    }
+    public sealed class TokenDefinition
+    {
+        public readonly IMatcher Matcher;
         public readonly object Token;
         public TokenDefinition(string regex, object token)
         {
-            this.Regex = new Regex(string.Format("^{0}$", regex));
+            this.Matcher = new RegexMatcher(regex);
             this.Token = token;
         }
     }
-    class Lexer : IDisposable
+    public sealed class Lexer : IDisposable
     {
         private readonly TextReader reader;
         private readonly TokenDefinition[] tokenDefinitions;
-        private TokenDefinition currentMatch = null;
-        private string currentContents = null;
+        private string lineRemaining;
         public Lexer(TextReader reader, TokenDefinition[] tokenDefinitions)
         {
             this.reader = reader;
             this.tokenDefinitions = tokenDefinitions;
+            nextLine();
         }
-        private int countMatches(StringBuilder current)
+        private void nextLine()
         {
-            int matches = 0;
-            string currentString = current.ToString();
-            foreach (TokenDefinition t in tokenDefinitions)
+            do
             {
-                if (t.Regex.IsMatch(currentString))
-                {
-                    ++matches;
-                    
-                    currentMatch = t;
-                    currentContents = currentString;
-                    //Console.WriteLine("'{0}' matches '{1}'", t.Regex, currentString);
-                }
-            }
-            return matches;
+                lineRemaining = reader.ReadLine();
+                ++LineNumber;
+                Position = 0;
+            } while (lineRemaining != null && lineRemaining.Length == 0);
         }
         public bool Next()
         {
-            StringBuilder current = new StringBuilder();
-            currentMatch = null;
-            currentContents = null;
-            int next = -1;
-            while ((next = reader.Peek()) != -1)
+            if (lineRemaining == null)
+                return false;
+            foreach (var def in tokenDefinitions)
             {
-                current.Append((char)next);
-                // What we've read so far no longer matches any tokens
-                // Either that's an error it's time to return that
-                // token to the consumer loop.
-                if (countMatches(current) == 0)
-                    break;
-                // Only actually advance the loop if we haven't reached the end
-                // of the current token
-                reader.Read();
+                var matched = def.Matcher.Match(lineRemaining);
+                if (matched > 0)
+                {
+                    Position += matched;
+                    Token = def.Token;
+                    TokenContents = lineRemaining.Substring(0, matched);
+                    lineRemaining = lineRemaining.Substring(matched);
+                    if (lineRemaining.Length == 0)
+                        nextLine();
+                    return true;
+                }
             }
-            if (currentMatch != null)
-                return true;
-            if (next != -1)
-                throw new Exception (string.Format("Unable to convert '{0}' into a token", current));
-            return false;
+            throw new Exception(string.Format("Unable to match against any tokens at line {0} position {1} \"{2}\"",
+                                              LineNumber, Position, lineRemaining));
         }
-        public string TokenContents
-        {
-            get { return currentContents; }
-        }
-        public object Token
-        {
-            get { return currentMatch.Token; }
-        }
+        public string TokenContents { get; private set; }
+        public object Token { get; private set; }
+        public int LineNumber { get; private set; }
+        public int Position { get; private set; }
         public void Dispose()
         {
             reader.Dispose();
-        }
-    }
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            string sample = "( one (two 456 --- three \"quoted\" ))";
-            TokenDefinition[] defs = new TokenDefinition[]
-            {
-                new TokenDefinition ("\\s+", "SPACE"),
-                new TokenDefinition ("\\w+", "WORD"),
-                new TokenDefinition ("[0-9]+", "NUMBER"),
-                new TokenDefinition ("\\(", "LEFT"),
-                new TokenDefinition ("\"", "QUOTE"),
-                new TokenDefinition ("\\)", "RIGHT")
-            };
-            TextReader r = new StringReader(sample);
-            Lexer l = new Lexer(r, defs);
-            while (l.Next())
-            {
-                Console.WriteLine("Token: {0} Contents: {1}", l.Token, l.TokenContents);
-            }
-            Console.WriteLine("Finished.");
         }
     }
